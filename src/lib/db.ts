@@ -1,61 +1,66 @@
-import Database from "better-sqlite3";
-import path from "path";
+// IMPORTANT: Requires POSTGRES_URL (and optionally POSTGRES_URL_NON_POOLING) env vars.
+// For local dev, set these in .env.local. For Vercel, configure in the project settings.
 
-const DB_PATH = "/tmp/stimme.db";
+import { sql } from "@vercel/postgres";
 
-let db: Database.Database | null = null;
-
-export function getDb(): Database.Database {
-  if (!db) {
-    db = new Database(DB_PATH);
-    db.pragma("journal_mode = WAL");
-    db.pragma("foreign_keys = ON");
-    initializeDatabase(db);
-  }
-  return db;
+export interface Topic {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  created_at: string;
+  author_canton: string;
+  active: number;
+  zustimmen_count?: number;
+  neutral_count?: number;
+  ablehnen_count?: number;
+  total_opinions?: number;
 }
 
-function initializeDatabase(db: Database.Database) {
-  db.exec(`
+export interface Opinion {
+  id: string;
+  topic_id: string;
+  vote: "zustimmen" | "neutral" | "ablehnen";
+  text: string | null;
+  canton: string;
+  created_at: string;
+  author_name: string | null;
+}
+
+export async function initDb(): Promise<void> {
+  await sql`
     CREATE TABLE IF NOT EXISTS topics (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       description TEXT NOT NULL,
-      category TEXT NOT NULL CHECK(category IN ('Politik', 'Gesellschaft', 'Verkehr', 'Umwelt', 'Wirtschaft', 'Bildung')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      category TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (NOW()::text),
       author_canton TEXT NOT NULL,
       active INTEGER NOT NULL DEFAULT 1
-    );
+    )
+  `;
 
+  await sql`
     CREATE TABLE IF NOT EXISTS opinions (
       id TEXT PRIMARY KEY,
       topic_id TEXT NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-      vote TEXT NOT NULL CHECK(vote IN ('zustimmen', 'neutral', 'ablehnen')),
+      vote TEXT NOT NULL,
       text TEXT,
       canton TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL DEFAULT (NOW()::text),
       author_name TEXT
-    );
-  `);
+    )
+  `;
 
-  // Check if seed data exists
-  const count = db.prepare("SELECT COUNT(*) as c FROM topics").get() as { c: number };
-  if (count.c === 0) {
-    seedDatabase(db);
+  // Seed only if no data exists
+  const { rows } = await sql`SELECT COUNT(*)::int as c FROM topics`;
+  const count = rows[0]?.c ?? 0;
+  if (count === 0) {
+    await seedDatabase();
   }
 }
 
-function seedDatabase(db: Database.Database) {
-  const insertTopic = db.prepare(`
-    INSERT INTO topics (id, title, description, category, created_at, author_canton, active)
-    VALUES (?, ?, ?, ?, ?, ?, 1)
-  `);
-
-  const insertOpinion = db.prepare(`
-    INSERT INTO opinions (id, topic_id, vote, text, canton, created_at, author_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
-
+async function seedDatabase(): Promise<void> {
   const topics = [
     {
       id: "topic-1",
@@ -152,109 +157,93 @@ function seedDatabase(db: Database.Database) {
     { id: "op-30", topic_id: "topic-6", vote: "ablehnen", text: "Nein zur Rentenaltererhöhung! Bessere Alternativen wären höhere Lohnbeiträge.", canton: "ZH", created_at: "2024-02-24 15:00:00", author_name: "Elisabeth P." },
   ];
 
-  const insertTopics = db.transaction(() => {
-    for (const topic of topics) {
-      insertTopic.run(topic.id, topic.title, topic.description, topic.category, topic.created_at, topic.author_canton);
-    }
-  });
+  for (const t of topics) {
+    await sql`
+      INSERT INTO topics (id, title, description, category, created_at, author_canton, active)
+      VALUES (${t.id}, ${t.title}, ${t.description}, ${t.category}, ${t.created_at}, ${t.author_canton}, 1)
+      ON CONFLICT (id) DO NOTHING
+    `;
+  }
 
-  const insertOpinions = db.transaction(() => {
-    for (const op of opinions) {
-      insertOpinion.run(op.id, op.topic_id, op.vote, op.text, op.canton, op.created_at, op.author_name);
-    }
-  });
-
-  insertTopics();
-  insertOpinions();
+  for (const o of opinions) {
+    await sql`
+      INSERT INTO opinions (id, topic_id, vote, text, canton, created_at, author_name)
+      VALUES (${o.id}, ${o.topic_id}, ${o.vote}, ${o.text}, ${o.canton}, ${o.created_at}, ${o.author_name})
+      ON CONFLICT (id) DO NOTHING
+    `;
+  }
 }
 
-export interface Topic {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-  created_at: string;
-  author_canton: string;
-  active: number;
-  zustimmen_count?: number;
-  neutral_count?: number;
-  ablehnen_count?: number;
-  total_opinions?: number;
-}
-
-export interface Opinion {
-  id: string;
-  topic_id: string;
-  vote: "zustimmen" | "neutral" | "ablehnen";
-  text: string | null;
-  canton: string;
-  created_at: string;
-  author_name: string | null;
-}
-
-export function getTopicsWithStats(): Topic[] {
-  const db = getDb();
-  const rows = db.prepare(`
+export async function getTopics(): Promise<Topic[]> {
+  await initDb();
+  const { rows } = await sql<Topic>`
     SELECT
       t.*,
-      COALESCE(SUM(CASE WHEN o.vote = 'zustimmen' THEN 1 ELSE 0 END), 0) as zustimmen_count,
-      COALESCE(SUM(CASE WHEN o.vote = 'neutral' THEN 1 ELSE 0 END), 0) as neutral_count,
-      COALESCE(SUM(CASE WHEN o.vote = 'ablehnen' THEN 1 ELSE 0 END), 0) as ablehnen_count,
-      COUNT(o.id) as total_opinions
+      COALESCE(SUM(CASE WHEN o.vote = 'zustimmen' THEN 1 ELSE 0 END), 0)::int as zustimmen_count,
+      COALESCE(SUM(CASE WHEN o.vote = 'neutral' THEN 1 ELSE 0 END), 0)::int as neutral_count,
+      COALESCE(SUM(CASE WHEN o.vote = 'ablehnen' THEN 1 ELSE 0 END), 0)::int as ablehnen_count,
+      COUNT(o.id)::int as total_opinions
     FROM topics t
     LEFT JOIN opinions o ON t.id = o.topic_id
     WHERE t.active = 1
     GROUP BY t.id
     ORDER BY total_opinions DESC, t.created_at DESC
-  `).all() as Topic[];
+  `;
   return rows;
 }
 
-export function getTopicById(id: string): Topic | null {
-  const db = getDb();
-  const row = db.prepare(`
+export async function getTopic(id: string): Promise<Topic | null> {
+  await initDb();
+  const { rows } = await sql<Topic>`
     SELECT
       t.*,
-      COALESCE(SUM(CASE WHEN o.vote = 'zustimmen' THEN 1 ELSE 0 END), 0) as zustimmen_count,
-      COALESCE(SUM(CASE WHEN o.vote = 'neutral' THEN 1 ELSE 0 END), 0) as neutral_count,
-      COALESCE(SUM(CASE WHEN o.vote = 'ablehnen' THEN 1 ELSE 0 END), 0) as ablehnen_count,
-      COUNT(o.id) as total_opinions
+      COALESCE(SUM(CASE WHEN o.vote = 'zustimmen' THEN 1 ELSE 0 END), 0)::int as zustimmen_count,
+      COALESCE(SUM(CASE WHEN o.vote = 'neutral' THEN 1 ELSE 0 END), 0)::int as neutral_count,
+      COALESCE(SUM(CASE WHEN o.vote = 'ablehnen' THEN 1 ELSE 0 END), 0)::int as ablehnen_count,
+      COUNT(o.id)::int as total_opinions
     FROM topics t
     LEFT JOIN opinions o ON t.id = o.topic_id
-    WHERE t.id = ?
+    WHERE t.id = ${id}
     GROUP BY t.id
-  `).get(id) as Topic | null;
-  return row;
+  `;
+  return rows[0] ?? null;
 }
 
-export function getOpinionsByTopicId(topicId: string): Opinion[] {
-  const db = getDb();
-  const rows = db.prepare(`
-    SELECT * FROM opinions WHERE topic_id = ? ORDER BY created_at DESC
-  `).all(topicId) as Opinion[];
+export async function getOpinions(topicId: string): Promise<Opinion[]> {
+  await initDb();
+  const { rows } = await sql<Opinion>`
+    SELECT * FROM opinions WHERE topic_id = ${topicId} ORDER BY created_at DESC
+  `;
   return rows;
 }
 
-export function createTopic(topic: Omit<Topic, "active" | "zustimmen_count" | "neutral_count" | "ablehnen_count" | "total_opinions">): Topic {
-  const db = getDb();
-  db.prepare(`
+export async function createTopic(
+  topic: Omit<Topic, "active" | "zustimmen_count" | "neutral_count" | "ablehnen_count" | "total_opinions">
+): Promise<Topic> {
+  await initDb();
+  await sql`
     INSERT INTO topics (id, title, description, category, created_at, author_canton, active)
-    VALUES (?, ?, ?, ?, ?, ?, 1)
-  `).run(topic.id, topic.title, topic.description, topic.category, topic.created_at, topic.author_canton);
-  return getTopicById(topic.id) as Topic;
+    VALUES (${topic.id}, ${topic.title}, ${topic.description}, ${topic.category}, ${topic.created_at}, ${topic.author_canton}, 1)
+  `;
+  return (await getTopic(topic.id)) as Topic;
 }
 
-export function createOpinion(opinion: Opinion): Opinion {
-  const db = getDb();
-  db.prepare(`
+export async function createOpinion(opinion: Opinion): Promise<Opinion> {
+  await initDb();
+  await sql`
     INSERT INTO opinions (id, topic_id, vote, text, canton, created_at, author_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(opinion.id, opinion.topic_id, opinion.vote, opinion.text, opinion.canton, opinion.created_at, opinion.author_name);
+    VALUES (${opinion.id}, ${opinion.topic_id}, ${opinion.vote}, ${opinion.text}, ${opinion.canton}, ${opinion.created_at}, ${opinion.author_name})
+  `;
   return opinion;
 }
 
-export function resetDatabase(): void {
-  const db = getDb();
-  db.exec("DELETE FROM opinions; DELETE FROM topics;");
-  seedDatabase(db);
+export async function resetDatabase(): Promise<void> {
+  await sql`DELETE FROM opinions`;
+  await sql`DELETE FROM topics`;
+  await seedDatabase();
 }
+
+// Legacy aliases kept for compatibility
+export const getTopicsWithStats = getTopics;
+export const getTopicById = getTopic;
+export const getOpinionsByTopicId = getOpinions;

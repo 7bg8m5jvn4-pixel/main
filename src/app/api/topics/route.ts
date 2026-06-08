@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const topics = getTopicsWithStats();
+    const topics = await getTopicsWithStats();
     return NextResponse.json(topics);
   } catch (error) {
     console.error("GET /api/topics error:", error);
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Ungültige Kategorie" }, { status: 400 });
     }
 
-    const topic = createTopic({
+    const topic = await createTopic({
       id: uuidv4(),
       title: title.trim(),
       description: description.trim(),

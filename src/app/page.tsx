@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getTopicsWithStats, Topic } from "@/lib/db";
 import { getCantonByAbbr } from "@/lib/cantons";
 
+export const dynamic = "force-dynamic";
+
 const CATEGORY_COLORS: Record<string, string> = {
   Politik: "bg-blue-100 text-blue-800",
   Gesellschaft: "bg-purple-100 text-purple-800",
@@ -168,7 +170,7 @@ function StatsBar({ topics }: { topics: Topic[] }) {
 }
 
 export default async function HomePage() {
-  const topics = getTopicsWithStats();
+  const topics = await getTopicsWithStats();
 
   return (
     <>

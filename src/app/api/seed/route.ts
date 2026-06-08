@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    resetDatabase();
+    await resetDatabase();
     return NextResponse.json({
       success: true,
       message: "Datenbank wurde zurückgesetzt und neu befüllt.",

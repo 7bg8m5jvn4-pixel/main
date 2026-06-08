@@ -26,13 +26,13 @@ const CATEGORY_ICONS: Record<string, string> = {
 export const dynamic = "force-dynamic";
 
 export default async function TopicPage({ params }: { params: { id: string } }) {
-  const topic = getTopicById(params.id);
+  const topic = await getTopicById(params.id);
 
   if (!topic) {
     notFound();
   }
 
-  const opinions = getOpinionsByTopicId(params.id);
+  const opinions = await getOpinionsByTopicId(params.id);
   const canton = getCantonByAbbr(topic.author_canton);
 
   const stats = {

@@ -8,7 +8,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const topic = getTopicById(params.id);
+    const topic = await getTopicById(params.id);
     if (!topic) {
       return NextResponse.json({ error: "Thema nicht gefunden" }, { status: 404 });
     }

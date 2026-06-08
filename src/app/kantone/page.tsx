@@ -5,7 +5,7 @@ import { getTopicsWithStats } from "@/lib/db";
 export const dynamic = "force-dynamic";
 
 export default async function KantonePage() {
-  const topics = getTopicsWithStats();
+  const topics = await getTopicsWithStats();
 
   // Count opinions per canton from topics
   const cantonStats: Record<string, { topics: number; opinions: number }> = {};
