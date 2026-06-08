@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "topicId Parameter fehlt" }, { status: 400 });
     }
 
-    const opinions = getOpinionsByTopicId(topicId);
+    const opinions = await getOpinionsByTopicId(topicId);
     return NextResponse.json(opinions);
   } catch (error) {
     console.error("GET /api/opinions error:", error);
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check topic exists
-    const topic = getTopicById(topic_id);
+    const topic = await getTopicById(topic_id);
     if (!topic) {
       return NextResponse.json({ error: "Thema nicht gefunden" }, { status: 404 });
     }

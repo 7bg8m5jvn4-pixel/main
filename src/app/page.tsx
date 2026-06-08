@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { getTopicsWithStats, Topic } from "@/lib/db";
 import { getCantonByAbbr } from "@/lib/cantons";
@@ -168,7 +170,7 @@ function StatsBar({ topics }: { topics: Topic[] }) {
 }
 
 export default async function HomePage() {
-  const topics = getTopicsWithStats();
+  const topics = await getTopicsWithStats();
 
   return (
     <>

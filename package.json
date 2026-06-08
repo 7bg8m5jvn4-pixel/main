@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@vercel/postgres": "^0.10.0",
     "better-sqlite3": "^9.4.3",
     "next": "14.2.5",
     "playwright": "^1.60.0",
