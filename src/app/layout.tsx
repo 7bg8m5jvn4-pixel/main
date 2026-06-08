@@ -74,6 +74,12 @@ export default function RootLayout({
                   Alle Kantone
                 </Link>
                 <Link
+                  href="/manifest"
+                  className="hidden sm:block px-3 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-navy-light rounded-md transition-colors"
+                >
+                  Manifest
+                </Link>
+                <Link
                   href="/neu"
                   className="ml-2 px-4 py-2 text-sm font-semibold bg-swiss-red hover:bg-swiss-red-dark text-white rounded-md transition-colors"
                 >
