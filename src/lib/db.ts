@@ -1,4 +1,10 @@
-import { sql } from "@vercel/postgres";
+import { neon } from "@neondatabase/serverless";
+
+let _sql: ReturnType<typeof neon> | null = null;
+function getSql() {
+  if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
+  return _sql;
+}
 
 export interface Topic {
   id: string;
@@ -25,7 +31,7 @@ export interface Opinion {
 }
 
 export async function initDb() {
-  await sql`
+  await getSql()`
     CREATE TABLE IF NOT EXISTS topics (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
@@ -36,7 +42,7 @@ export async function initDb() {
       active INTEGER NOT NULL DEFAULT 1
     )
   `;
-  await sql`
+  await getSql()`
     CREATE TABLE IF NOT EXISTS opinions (
       id TEXT PRIMARY KEY,
       topic_id TEXT NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
@@ -50,7 +56,7 @@ export async function initDb() {
 }
 
 export async function getTopicsWithStats(): Promise<Topic[]> {
-  const { rows } = await sql`
+  const rows = await getSql()`
     SELECT
       t.*,
       COALESCE(SUM(CASE WHEN o.vote = 'zustimmen' THEN 1 ELSE 0 END), 0)::int as zustimmen_count,
@@ -67,7 +73,7 @@ export async function getTopicsWithStats(): Promise<Topic[]> {
 }
 
 export async function getTopicById(id: string): Promise<Topic | null> {
-  const { rows } = await sql`
+  const rows = await getSql()`
     SELECT
       t.*,
       COALESCE(SUM(CASE WHEN o.vote = 'zustimmen' THEN 1 ELSE 0 END), 0)::int as zustimmen_count,
@@ -79,11 +85,11 @@ export async function getTopicById(id: string): Promise<Topic | null> {
     WHERE t.id = ${id}
     GROUP BY t.id, t.title, t.description, t.category, t.created_at, t.author_canton, t.active
   `;
-  return (rows[0] as Topic) ?? null;
+  return ((rows as Topic[])[0]) ?? null;
 }
 
 export async function getOpinionsByTopicId(topicId: string): Promise<Opinion[]> {
-  const { rows } = await sql`
+  const rows = await getSql()`
     SELECT * FROM opinions WHERE topic_id = ${topicId} ORDER BY created_at DESC
   `;
   return rows as Opinion[];
@@ -92,7 +98,7 @@ export async function getOpinionsByTopicId(topicId: string): Promise<Opinion[]> 
 export async function createTopic(
   topic: Omit<Topic, "active" | "zustimmen_count" | "neutral_count" | "ablehnen_count" | "total_opinions">
 ): Promise<Topic> {
-  await sql`
+  await getSql()`
     INSERT INTO topics (id, title, description, category, created_at, author_canton, active)
     VALUES (${topic.id}, ${topic.title}, ${topic.description}, ${topic.category}, ${topic.created_at}, ${topic.author_canton}, 1)
   `;
@@ -100,7 +106,7 @@ export async function createTopic(
 }
 
 export async function createOpinion(opinion: Opinion): Promise<Opinion> {
-  await sql`
+  await getSql()`
     INSERT INTO opinions (id, topic_id, vote, text, canton, created_at, author_name)
     VALUES (${opinion.id}, ${opinion.topic_id}, ${opinion.vote}, ${opinion.text}, ${opinion.canton}, ${opinion.created_at}, ${opinion.author_name})
   `;
@@ -153,7 +159,7 @@ export async function seedDatabase() {
   ];
 
   for (const t of topics) {
-    await sql`
+    await getSql()`
       INSERT INTO topics (id, title, description, category, created_at, author_canton, active)
       VALUES (${t.id}, ${t.title}, ${t.description}, ${t.category}, ${t.created_at}, ${t.author_canton}, 1)
       ON CONFLICT (id) DO NOTHING
@@ -161,7 +167,7 @@ export async function seedDatabase() {
   }
 
   for (const o of opinions) {
-    await sql`
+    await getSql()`
       INSERT INTO opinions (id, topic_id, vote, text, canton, created_at, author_name)
       VALUES (${o.id}, ${o.topic_id}, ${o.vote}, ${o.text}, ${o.canton}, ${o.created_at}, ${o.author_name})
       ON CONFLICT (id) DO NOTHING
@@ -170,7 +176,7 @@ export async function seedDatabase() {
 }
 
 export async function resetDatabase() {
-  await sql`DELETE FROM opinions`;
-  await sql`DELETE FROM topics`;
+  await getSql()`DELETE FROM opinions`;
+  await getSql()`DELETE FROM topics`;
   await seedDatabase();
 }

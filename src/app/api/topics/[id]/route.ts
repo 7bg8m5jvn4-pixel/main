@@ -5,10 +5,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const topic = await getTopicById(params.id);
+    const { id } = await params;
+    const topic = await getTopicById(id);
     if (!topic) {
       return NextResponse.json({ error: "Thema nicht gefunden" }, { status: 404 });
     }
