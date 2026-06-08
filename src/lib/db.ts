@@ -1,0 +1,260 @@
+import Database from "better-sqlite3";
+import path from "path";
+
+const DB_PATH = "/tmp/stimme.db";
+
+let db: Database.Database | null = null;
+
+export function getDb(): Database.Database {
+  if (!db) {
+    db = new Database(DB_PATH);
+    db.pragma("journal_mode = WAL");
+    db.pragma("foreign_keys = ON");
+    initializeDatabase(db);
+  }
+  return db;
+}
+
+function initializeDatabase(db: Database.Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS topics (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      category TEXT NOT NULL CHECK(category IN ('Politik', 'Gesellschaft', 'Verkehr', 'Umwelt', 'Wirtschaft', 'Bildung')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      author_canton TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS opinions (
+      id TEXT PRIMARY KEY,
+      topic_id TEXT NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+      vote TEXT NOT NULL CHECK(vote IN ('zustimmen', 'neutral', 'ablehnen')),
+      text TEXT,
+      canton TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      author_name TEXT
+    );
+  `);
+
+  // Check if seed data exists
+  const count = db.prepare("SELECT COUNT(*) as c FROM topics").get() as { c: number };
+  if (count.c === 0) {
+    seedDatabase(db);
+  }
+}
+
+function seedDatabase(db: Database.Database) {
+  const insertTopic = db.prepare(`
+    INSERT INTO topics (id, title, description, category, created_at, author_canton, active)
+    VALUES (?, ?, ?, ?, ?, ?, 1)
+  `);
+
+  const insertOpinion = db.prepare(`
+    INSERT INTO opinions (id, topic_id, vote, text, canton, created_at, author_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const topics = [
+    {
+      id: "topic-1",
+      title: "Soll Zürich mehr Velowege bauen?",
+      description:
+        "Die Stadt Zürich diskutiert den Ausbau des Velonetzes. Befürworter sehen darin eine nachhaltige Lösung für den Stadtverkehr, Gegner befürchten Staus und Parkplatzverluste für Autos.",
+      category: "Verkehr",
+      created_at: "2024-01-15 10:00:00",
+      author_canton: "ZH",
+    },
+    {
+      id: "topic-2",
+      title: "Homeoffice-Pflicht für Bundesbehörden?",
+      description:
+        "Sollen Bundesbehörden verpflichtet werden, mindestens 40% Homeoffice anzubieten? Dies würde den Pendlerverkehr reduzieren und die Work-Life-Balance verbessern.",
+      category: "Politik",
+      created_at: "2024-01-20 14:00:00",
+      author_canton: "BE",
+    },
+    {
+      id: "topic-3",
+      title: "Soll der Zürichsee für Motorboote gesperrt werden?",
+      description:
+        "Umweltschützer fordern ein Motorbootverbot auf dem Zürichsee zum Schutz der Wasserqualität und der Tierwelt. Freizeitkapitäne sehen ihren Sport bedroht.",
+      category: "Umwelt",
+      created_at: "2024-02-01 09:00:00",
+      author_canton: "ZH",
+    },
+    {
+      id: "topic-4",
+      title: "Braucht Zürich eine neue U-Bahn-Linie?",
+      description:
+        "Mit dem Bevölkerungswachstum stösst das Tramnetz an seine Grenzen. Eine U-Bahn-Linie würde Entlastung bringen, kostet aber Milliarden.",
+      category: "Verkehr",
+      created_at: "2024-02-10 11:00:00",
+      author_canton: "ZH",
+    },
+    {
+      id: "topic-5",
+      title: "Soll die Schweiz der EU beitreten?",
+      description:
+        "Die bilateralen Verträge stehen zur Neuverhandlung. Soll die Schweiz den Weg eines vollständigen EU-Beitritts prüfen oder den bilateralen Weg weiterverfolgen?",
+      category: "Politik",
+      created_at: "2024-02-15 08:00:00",
+      author_canton: "ZH",
+    },
+    {
+      id: "topic-6",
+      title: "Soll das Rentenalter auf 67 erhöht werden?",
+      description:
+        "Die AHV steht unter Druck. Eine Erhöhung des Rentenalters auf 67 würde die Finanzierung sichern, aber Arbeitnehmer länger im Arbeitsleben halten.",
+      category: "Gesellschaft",
+      created_at: "2024-02-20 15:00:00",
+      author_canton: "BE",
+    },
+  ];
+
+  const opinions = [
+    // Topic 1 - Velowege
+    { id: "op-1", topic_id: "topic-1", vote: "zustimmen", text: "Mehr Velowege bedeuten weniger Autos und sauberere Luft. Das ist ein Gewinn für alle!", canton: "ZH", created_at: "2024-01-16 09:00:00", author_name: "Maria K." },
+    { id: "op-2", topic_id: "topic-1", vote: "zustimmen", text: "Als täglicher Velofahrer begrüsse ich jeden neuen Veloweg. Sicherheit ist entscheidend.", canton: "ZH", created_at: "2024-01-16 10:30:00", author_name: "Peter S." },
+    { id: "op-3", topic_id: "topic-1", vote: "ablehnen", text: "Die Innenstadt hat schon zu wenig Parkplätze. Velowege auf Kosten von Autos geht nicht.", canton: "ZH", created_at: "2024-01-17 08:00:00", author_name: "Hans M." },
+    { id: "op-4", topic_id: "topic-1", vote: "neutral", text: "Ausbau ja, aber bitte mit Rücksicht auf alle Verkehrsteilnehmer.", canton: "AG", created_at: "2024-01-17 14:00:00", author_name: "Sandra B." },
+    { id: "op-5", topic_id: "topic-1", vote: "zustimmen", text: "Zürich braucht dringend mehr sichere Velowege. Vorbild Amsterdam!", canton: "BE", created_at: "2024-01-18 11:00:00", author_name: "Lukas W." },
+    { id: "op-6", topic_id: "topic-1", vote: "zustimmen", text: "Klimaschutz beginnt in der Stadt. Velowege sind ein wichtiger Schritt.", canton: "ZH", created_at: "2024-01-19 16:00:00", author_name: "Emma R." },
+    // Topic 2 - Homeoffice
+    { id: "op-7", topic_id: "topic-2", vote: "zustimmen", text: "Homeoffice reduziert den Pendlerverkehr und schont die Umwelt. Klare Unterstützung!", canton: "ZH", created_at: "2024-01-21 09:00:00", author_name: "Thomas F." },
+    { id: "op-8", topic_id: "topic-2", vote: "neutral", text: "Gut gemeint, aber eine Pflicht greift zu weit. Freiwilligkeit wäre besser.", canton: "BE", created_at: "2024-01-21 11:00:00", author_name: "Anna L." },
+    { id: "op-9", topic_id: "topic-2", vote: "ablehnen", text: "Homeoffice ist nicht für alle Berufe geeignet. Eine Pflicht ist unrealistisch.", canton: "LU", created_at: "2024-01-22 10:00:00", author_name: "Fritz K." },
+    { id: "op-10", topic_id: "topic-2", vote: "zustimmen", text: "Seit meinem Homeoffice-Wechsel spare ich täglich 2 Stunden Pendelzeit. Sehr empfehlenswert!", canton: "SG", created_at: "2024-01-23 14:00:00", author_name: "Claudia M." },
+    { id: "op-11", topic_id: "topic-2", vote: "neutral", text: "Die Work-Life-Balance verbessert sich, aber sozialer Zusammenhalt leidet.", canton: "ZG", created_at: "2024-01-24 15:00:00", author_name: "Marc H." },
+    // Topic 3 - Zürichsee
+    { id: "op-12", topic_id: "topic-3", vote: "zustimmen", text: "Der Zürichsee ist ein Naturjuwel. Motorboote haben dort nichts zu suchen!", canton: "ZH", created_at: "2024-02-02 10:00:00", author_name: "Ursula T." },
+    { id: "op-13", topic_id: "topic-3", vote: "ablehnen", text: "Ich fahre seit 20 Jahren mit meinem Boot auf dem See. Das ist Tradition!", canton: "ZH", created_at: "2024-02-02 11:00:00", author_name: "Ruedi O." },
+    { id: "op-14", topic_id: "topic-3", vote: "zustimmen", text: "Lärm und Abgase vergällen das Badevergnügen. Weg mit den Motorbooten!", canton: "SZ", created_at: "2024-02-03 09:00:00", author_name: "Heidi N." },
+    { id: "op-15", topic_id: "topic-3", vote: "neutral", text: "Elektroboote sollten erlaubt bleiben. Nur Verbrennungsmotoren verbieten.", canton: "ZH", created_at: "2024-02-04 12:00:00", author_name: "Daniel E." },
+    // Topic 4 - U-Bahn
+    { id: "op-16", topic_id: "topic-4", vote: "zustimmen", text: "Das Tram-Netz ist überlastet. Eine U-Bahn wäre ein Quantensprung für Zürich!", canton: "ZH", created_at: "2024-02-11 08:00:00", author_name: "Stefan J." },
+    { id: "op-17", topic_id: "topic-4", vote: "ablehnen", text: "Milliarden für eine U-Bahn? Lieber das bestehende Netz optimieren.", canton: "ZH", created_at: "2024-02-11 09:00:00", author_name: "Barbara G." },
+    { id: "op-18", topic_id: "topic-4", vote: "zustimmen", text: "Als Pendlerin aus Winterthur begrüsse ich jede Erweiterung des ÖV.", canton: "ZH", created_at: "2024-02-12 10:00:00", author_name: "Karin P." },
+    { id: "op-19", topic_id: "topic-4", vote: "neutral", text: "Gute Idee langfristig, aber die Kosten müssen erst sorgfältig geprüft werden.", canton: "AG", created_at: "2024-02-13 14:00:00", author_name: "Werner Z." },
+    { id: "op-20", topic_id: "topic-4", vote: "zustimmen", text: "München, Wien, Berlin - alle haben eine U-Bahn. Zürich sollte nachziehen.", canton: "ZH", created_at: "2024-02-14 11:00:00", author_name: "Florian B." },
+    // Topic 5 - EU
+    { id: "op-21", topic_id: "topic-5", vote: "ablehnen", text: "Die Schweiz ist neutral und souverän. Das soll so bleiben!", canton: "SZ", created_at: "2024-02-16 09:00:00", author_name: "Anton V." },
+    { id: "op-22", topic_id: "topic-5", vote: "zustimmen", text: "Für bessere Zusammenarbeit und stärkere Stimme in Europa wäre ein Beitritt sinnvoll.", canton: "GE", created_at: "2024-02-16 11:00:00", author_name: "Sophie D." },
+    { id: "op-23", topic_id: "topic-5", vote: "ablehnen", text: "Bilaterale Verträge sind ausreichend. Volle Souveränität ist der Schweizer Weg.", canton: "ZH", created_at: "2024-02-17 10:00:00", author_name: "Urs M." },
+    { id: "op-24", topic_id: "topic-5", vote: "neutral", text: "Das Thema ist komplex. Zuerst brauchen wir eine breite gesellschaftliche Debatte.", canton: "BE", created_at: "2024-02-18 14:00:00", author_name: "Petra W." },
+    { id: "op-25", topic_id: "topic-5", vote: "ablehnen", text: "Direkte Demokratie und Volksrechte würden im EU-Rahmen geschwächt.", canton: "UR", created_at: "2024-02-19 16:00:00", author_name: "Josef A." },
+    // Topic 6 - Rentenalter
+    { id: "op-26", topic_id: "topic-6", vote: "ablehnen", text: "Wir haben unser Leben lang gearbeitet. Jetzt reichen 65 Jahre!", canton: "ZH", created_at: "2024-02-21 09:00:00", author_name: "Margrit S." },
+    { id: "op-27", topic_id: "topic-6", vote: "zustimmen", text: "Die Lebenserwartung steigt. Es ist fair, auch etwas länger zu arbeiten.", canton: "ZG", created_at: "2024-02-21 10:00:00", author_name: "Roland F." },
+    { id: "op-28", topic_id: "topic-6", vote: "ablehnen", text: "Viele können nicht bis 65 arbeiten, geschweige denn bis 67!", canton: "BE", created_at: "2024-02-22 11:00:00", author_name: "Monika K." },
+    { id: "op-29", topic_id: "topic-6", vote: "neutral", text: "Flexible Rentenmodelle wären besser als ein fixes Rentenalter.", canton: "BS", created_at: "2024-02-23 14:00:00", author_name: "Christian H." },
+    { id: "op-30", topic_id: "topic-6", vote: "ablehnen", text: "Nein zur Rentenaltererhöhung! Bessere Alternativen wären höhere Lohnbeiträge.", canton: "ZH", created_at: "2024-02-24 15:00:00", author_name: "Elisabeth P." },
+  ];
+
+  const insertTopics = db.transaction(() => {
+    for (const topic of topics) {
+      insertTopic.run(topic.id, topic.title, topic.description, topic.category, topic.created_at, topic.author_canton);
+    }
+  });
+
+  const insertOpinions = db.transaction(() => {
+    for (const op of opinions) {
+      insertOpinion.run(op.id, op.topic_id, op.vote, op.text, op.canton, op.created_at, op.author_name);
+    }
+  });
+
+  insertTopics();
+  insertOpinions();
+}
+
+export interface Topic {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  created_at: string;
+  author_canton: string;
+  active: number;
+  zustimmen_count?: number;
+  neutral_count?: number;
+  ablehnen_count?: number;
+  total_opinions?: number;
+}
+
+export interface Opinion {
+  id: string;
+  topic_id: string;
+  vote: "zustimmen" | "neutral" | "ablehnen";
+  text: string | null;
+  canton: string;
+  created_at: string;
+  author_name: string | null;
+}
+
+export function getTopicsWithStats(): Topic[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT
+      t.*,
+      COALESCE(SUM(CASE WHEN o.vote = 'zustimmen' THEN 1 ELSE 0 END), 0) as zustimmen_count,
+      COALESCE(SUM(CASE WHEN o.vote = 'neutral' THEN 1 ELSE 0 END), 0) as neutral_count,
+      COALESCE(SUM(CASE WHEN o.vote = 'ablehnen' THEN 1 ELSE 0 END), 0) as ablehnen_count,
+      COUNT(o.id) as total_opinions
+    FROM topics t
+    LEFT JOIN opinions o ON t.id = o.topic_id
+    WHERE t.active = 1
+    GROUP BY t.id
+    ORDER BY total_opinions DESC, t.created_at DESC
+  `).all() as Topic[];
+  return rows;
+}
+
+export function getTopicById(id: string): Topic | null {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT
+      t.*,
+      COALESCE(SUM(CASE WHEN o.vote = 'zustimmen' THEN 1 ELSE 0 END), 0) as zustimmen_count,
+      COALESCE(SUM(CASE WHEN o.vote = 'neutral' THEN 1 ELSE 0 END), 0) as neutral_count,
+      COALESCE(SUM(CASE WHEN o.vote = 'ablehnen' THEN 1 ELSE 0 END), 0) as ablehnen_count,
+      COUNT(o.id) as total_opinions
+    FROM topics t
+    LEFT JOIN opinions o ON t.id = o.topic_id
+    WHERE t.id = ?
+    GROUP BY t.id
+  `).get(id) as Topic | null;
+  return row;
+}
+
+export function getOpinionsByTopicId(topicId: string): Opinion[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT * FROM opinions WHERE topic_id = ? ORDER BY created_at DESC
+  `).all(topicId) as Opinion[];
+  return rows;
+}
+
+export function createTopic(topic: Omit<Topic, "active" | "zustimmen_count" | "neutral_count" | "ablehnen_count" | "total_opinions">): Topic {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO topics (id, title, description, category, created_at, author_canton, active)
+    VALUES (?, ?, ?, ?, ?, ?, 1)
+  `).run(topic.id, topic.title, topic.description, topic.category, topic.created_at, topic.author_canton);
+  return getTopicById(topic.id) as Topic;
+}
+
+export function createOpinion(opinion: Opinion): Opinion {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO opinions (id, topic_id, vote, text, canton, created_at, author_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(opinion.id, opinion.topic_id, opinion.vote, opinion.text, opinion.canton, opinion.created_at, opinion.author_name);
+  return opinion;
+}
+
+export function resetDatabase(): void {
+  const db = getDb();
+  db.exec("DELETE FROM opinions; DELETE FROM topics;");
+  seedDatabase(db);
+}
